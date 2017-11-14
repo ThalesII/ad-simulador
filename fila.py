@@ -17,7 +17,7 @@ class Sample:
 
 	def variance(self):
 		## Conferir fórmula
-		return (self._sumsqr - self._sum**2) / (1 - self._num)
+		return (self._sum**2 - self._sumsqr) / (self._num - 1)
 
 class SampleFunction:
 	def __init__(self):
@@ -72,7 +72,11 @@ class Queue:
 
 	def samplequeue2(self):
 		n2 = len(self._queue2)
-		self._samplefs['nq2'].append(self._tnow, max(0, n2-1))
+		if len(self._queue1) > 0:
+			nq2 = n2
+		else:
+			nq2 = max(0, n2-1)
+		self._samplefs['nq2'].append(self._tnow, nq2)
 
 	def sampleall(self):
 		self.sampleserver()
@@ -132,8 +136,9 @@ class Queue:
 			if kind == 'endofserv1':
 				self.endofserv1()
 			if kind == 'endofserv2':
+				if self._queue2[-1].color == self._color:
+					n -= 1
 				self.endofserv2()
-				n -= 1
 
 		self.sampleall()
 		return self.statistics()
@@ -176,8 +181,8 @@ class Queue:
 
 queue = Queue(0.4)
 for i in range(20):
-	stats = queue.simround(5000)
+	stats = queue.simround(50000)
 	print('round {}'.format(i+1))
 	for key, value in stats.items():
-		print('    {} = {:2.3f}'.format(key, value), end=', ')
+		print('  {} = {:2.3f}'.format(key, value), end=',')
 	print()
