@@ -38,26 +38,28 @@ class SampleFunction:
 		return self._area / (self._tlast - self._tstart)
 
 class Customer:
-	def __init__(self):
-		# self.tarrival = time
-		# self.color = color
-		pass
+	def __init__(self, tarrival, color):
+		self.tarrival = tarrival
+		self.color = color
 
 Event = namedtuple('Event', 'time, kind')
 
 class Queue:
 	def __init__(self, alpha):
 		self._tnow = 0
+		self._color = 0
 		self._alpha = alpha
 		self._queue1 = deque()
 		self._queue2 = deque()
-		# self._color = 0
 		self._events = []
 
 		self.addevent('arrival')
 
+	def newcolor(self):
+		self._color += 1
+
 	def clearsamples(self):
-		# self._samples = defaultdict(Sample)
+		self._samples = defaultdict(Sample)
 		self._samplefs = defaultdict(SampleFunction)
 
 	def sampleserver(self):
@@ -76,6 +78,12 @@ class Queue:
 		self.sampleserver()
 		self.samplequeue1()
 		self.samplequeue2()
+
+	def samplecustomer(self, customer):
+		t1 = customer.tendofserv1 - customer.tarrival
+		self._samples['t1'].append(t1)
+		t2 = customer.tendofserv2 - customer.tendofserv1
+		self._samples['t2'].append(t2)
 
 	def addevent(self, kind):
 		if kind == 'arrival':
@@ -101,14 +109,20 @@ class Queue:
 
 	def statistics(self):
 		stats = {}
+		for key, sample in self._samples.items():
+			ekey = 'E[' + key + ']'
+			stats[ekey] = sample.average()
+			vkey = 'V(' + key + ')'
+			stats[vkey] = sample.variance()
 		for key, samplef in self._samplefs.items():
-			key = 'E[' + key + ']'
-			stats[key] = samplef.average()
+			ekey = 'E[' + key + ']'
+			stats[ekey] = samplef.average()
 		return stats
 
 	def simround(self, n):
 		self.clearsamples()
 		self.sampleall()
+		self.newcolor()
 
 		while n > 0:
 			time, kind = self.nextevent()
@@ -125,7 +139,8 @@ class Queue:
 		return self.statistics()
 
 	def arrival(self):
-		self._queue1.appendleft(Customer())
+		customer = Customer(self._tnow, self._color)
+		self._queue1.appendleft(customer)
 		self.addevent('arrival')
 		if len(self._queue1) == 1:
 			self.addevent('endofserv1')
@@ -138,6 +153,7 @@ class Queue:
 
 	def endofserv1(self):
 		customer = self._queue1.pop()
+		customer.tendofserv1 = self._tnow
 		self._queue2.appendleft(customer)
 		if len(self._queue1) == 0:
 			self.addevent('endofserv2')
@@ -148,6 +164,10 @@ class Queue:
 
 	def endofserv2(self):
 		customer = self._queue2.pop()
+		customer.tendofserv2 = self._tnow
+		if customer.color == self._color:
+			self.samplecustomer(customer)
+
 		if len(self._queue2) == 0:
 			self.sampleserver()
 		else:
