@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import defaultdict, deque, namedtuple
 import random
 
 class Sample:
@@ -43,12 +43,14 @@ class Customer:
 		# self.color = color
 		pass
 
+Event = namedtuple('Event', 'time, kind')
+
 class Queue:
 	def __init__(self, alpha):
 		self._tnow = 0
 		self._alpha = alpha
-		self._queue = deque()
-		# self._queue2 = deque()
+		self._queue1 = deque()
+		self._queue2 = deque()
 		# self._color = 0
 		self._events = []
 
@@ -59,23 +61,38 @@ class Queue:
 		self._samplefs = defaultdict(SampleFunction)
 
 	def sampleserver(self):
-		n = len(self._queue)
-		self._samplefs['ns'].append(self._tnow, n > 0)
+		ns = len(self._queue1) > 0 or len(self._queue2) > 0
+		self._samplefs['ns'].append(self._tnow, ns)
 
-	def samplequeue(self):
-		n = len(self._queue)
-		self._samplefs['nq'].append(self._tnow, max(0, n-1))
+	def samplequeue1(self):
+		n1 = len(self._queue1)
+		self._samplefs['nq1'].append(self._tnow, max(0, n1-1))
+
+	def samplequeue2(self):
+		n2 = len(self._queue2)
+		self._samplefs['nq2'].append(self._tnow, max(0, n2-1))
 
 	def sampleall(self):
 		self.sampleserver()
-		self.samplequeue()
+		self.samplequeue1()
+		self.samplequeue2()
 
 	def addevent(self, kind):
 		if kind == 'arrival':
 			time = self._tnow + random.expovariate(self._alpha)
-		if kind == 'endofserv':
+		if kind == 'endofserv1' or kind == 'endofserv2':
 			time = self._tnow + random.expovariate(1)
-		self._events.append((time, kind))
+		event = Event(time, kind)
+		self._events.append(event)
+
+	def rmevent(self, kind):
+		for event in self._events:
+			if event.kind == kind:
+				self._events.remove(event)
+				break
+		else:
+			# ValueError?
+			pass
 
 	def nextevent(self):
 		event = min(self._events)
@@ -98,31 +115,49 @@ class Queue:
 			self._tnow = time
 			if kind == 'arrival':
 				self.arrival()
-			if kind == 'endofserv':
-				self.endofserv()
+			if kind == 'endofserv1':
+				self.endofserv1()
+			if kind == 'endofserv2':
+				self.endofserv2()
 				n -= 1
 
 		self.sampleall()
 		return self.statistics()
 
 	def arrival(self):
-		self._queue.appendleft(Customer())
+		self._queue1.appendleft(Customer())
 		self.addevent('arrival')
-		if len(self._queue) == 1:
-			self.addevent('endofserv')
+		if len(self._queue1) == 1:
+			self.addevent('endofserv1')
+			self.sampleserver()
+			if len(self._queue2) > 0:
+				self.rmevent('endofserv2')
+				self.samplequeue2()
+		else:
+			self.samplequeue1()
+
+	def endofserv1(self):
+		customer = self._queue1.pop()
+		self._queue2.appendleft(customer)
+		if len(self._queue1) == 0:
+			self.addevent('endofserv2')
+			self.samplequeue2()
+		else:
+			self.addevent('endofserv1')
+			self.samplequeue1()
+
+	def endofserv2(self):
+		customer = self._queue2.pop()
+		if len(self._queue2) == 0:
 			self.sampleserver()
 		else:
-			self.samplequeue()
+			self.addevent('endofserv2')
+			self.samplequeue2()
 
-	def endofserv(self):
-		customer = self._queue.pop()
-		if len(self._queue) == 0:
-			self.sampleserver()
-		else:
-			self.addevent('endofserv')
-			self.samplequeue()
-
-queue = Queue(0.8)
+queue = Queue(0.4)
 for i in range(20):
-	stats = queue.simround(1000)
-	print('{}: {}'.format(i+1, stats))
+	stats = queue.simround(5000)
+	print('round {}'.format(i+1))
+	for key, value in stats.items():
+		print('    {} = {:2.3f}'.format(key, value), end=', ')
+	print()
