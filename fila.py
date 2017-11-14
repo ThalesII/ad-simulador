@@ -55,6 +55,12 @@ class Queue:
 
 		self._addevent('arrival')
 
+	def _resettime(self):
+		for i, event in enumerate(self._events):
+			time, kind = event
+			self._events[i] = Event(time - self._tnow, kind)
+		self._tnow = 0
+
 	def _newcolor(self):
 		self._color += 1
 
@@ -103,8 +109,7 @@ class Queue:
 				self._events.remove(event)
 				break
 		else:
-			raise ValueError()
-			pass
+			raise ValueError('queue._rmevent(kind): kind not in events')
 
 	def _nextevent(self):
 		event = min(self._events)
@@ -124,9 +129,10 @@ class Queue:
 		return stats
 
 	def simround(self, n):
+		self._resettime()
+		self._newcolor()
 		self._clearsamples()
 		self._sampleall()
-		self._newcolor()
 
 		while n > 0:
 			time, kind = self._nextevent()
