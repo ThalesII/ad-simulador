@@ -45,32 +45,32 @@ class Customer:
 Event = namedtuple('Event', 'time, kind')
 
 class Queue:
-	def __init__(self, alpha):
+	def __init__(self, lambd):
 		self._tnow = 0
 		self._color = 0
-		self._alpha = alpha
+		self._lambd = lambd
 		self._queue1 = deque()
 		self._queue2 = deque()
 		self._events = []
 
-		self.addevent('arrival')
+		self._addevent('arrival')
 
-	def newcolor(self):
+	def _newcolor(self):
 		self._color += 1
 
-	def clearsamples(self):
+	def _clearsamples(self):
 		self._samples = defaultdict(Sample)
 		self._samplefs = defaultdict(SampleFunction)
 
-	def sampleserver(self):
+	def _sampleserver(self):
 		ns = len(self._queue1) > 0 or len(self._queue2) > 0
 		self._samplefs['ns'].append(self._tnow, ns)
 
-	def samplequeue1(self):
+	def _samplequeue1(self):
 		n1 = len(self._queue1)
 		self._samplefs['nq1'].append(self._tnow, max(0, n1-1))
 
-	def samplequeue2(self):
+	def _samplequeue2(self):
 		n2 = len(self._queue2)
 		if len(self._queue1) > 0:
 			nq2 = n2
@@ -78,40 +78,40 @@ class Queue:
 			nq2 = max(0, n2-1)
 		self._samplefs['nq2'].append(self._tnow, nq2)
 
-	def sampleall(self):
-		self.sampleserver()
-		self.samplequeue1()
-		self.samplequeue2()
+	def _sampleall(self):
+		self._sampleserver()
+		self._samplequeue1()
+		self._samplequeue2()
 
-	def samplecustomer(self, customer):
+	def _samplecustomer(self, customer):
 		t1 = customer.tendofserv1 - customer.tarrival
 		self._samples['t1'].append(t1)
 		t2 = customer.tendofserv2 - customer.tendofserv1
 		self._samples['t2'].append(t2)
 
-	def addevent(self, kind):
+	def _addevent(self, kind):
 		if kind == 'arrival':
-			time = self._tnow + random.expovariate(self._alpha)
+			time = self._tnow + random.expovariate(self._lambd)
 		if kind == 'endofserv1' or kind == 'endofserv2':
 			time = self._tnow + random.expovariate(1)
 		event = Event(time, kind)
 		self._events.append(event)
 
-	def rmevent(self, kind):
+	def _rmevent(self, kind):
 		for event in self._events:
 			if event.kind == kind:
 				self._events.remove(event)
 				break
 		else:
-			# ValueError?
+			raise ValueError()
 			pass
 
-	def nextevent(self):
+	def _nextevent(self):
 		event = min(self._events)
 		self._events.remove(event)
 		return event
 
-	def statistics(self):
+	def _statistics(self):
 		stats = {}
 		for key, sample in self._samples.items():
 			ekey = 'E[' + key + ']'
@@ -124,60 +124,60 @@ class Queue:
 		return stats
 
 	def simround(self, n):
-		self.clearsamples()
-		self.sampleall()
-		self.newcolor()
+		self._clearsamples()
+		self._sampleall()
+		self._newcolor()
 
 		while n > 0:
-			time, kind = self.nextevent()
+			time, kind = self._nextevent()
 			self._tnow = time
 			if kind == 'arrival':
-				self.arrival()
+				self._arrival()
 			if kind == 'endofserv1':
-				self.endofserv1()
+				self._endofserv1()
 			if kind == 'endofserv2':
 				if self._queue2[-1].color == self._color:
 					n -= 1
-				self.endofserv2()
+				self._endofserv2()
 
-		self.sampleall()
-		return self.statistics()
+		self._sampleall()
+		return self._statistics()
 
-	def arrival(self):
+	def _arrival(self):
 		customer = Customer(self._tnow, self._color)
 		self._queue1.appendleft(customer)
-		self.addevent('arrival')
+		self._addevent('arrival')
 		if len(self._queue1) == 1:
-			self.addevent('endofserv1')
-			self.sampleserver()
+			self._addevent('endofserv1')
+			self._sampleserver()
 			if len(self._queue2) > 0:
-				self.rmevent('endofserv2')
-				self.samplequeue2()
+				self._rmevent('endofserv2')
+				self._samplequeue2()
 		else:
-			self.samplequeue1()
+			self._samplequeue1()
 
-	def endofserv1(self):
+	def _endofserv1(self):
 		customer = self._queue1.pop()
 		customer.tendofserv1 = self._tnow
 		self._queue2.appendleft(customer)
 		if len(self._queue1) == 0:
-			self.addevent('endofserv2')
-			self.samplequeue2()
+			self._addevent('endofserv2')
+			self._samplequeue2()
 		else:
-			self.addevent('endofserv1')
-			self.samplequeue1()
+			self._addevent('endofserv1')
+			self._samplequeue1()
 
-	def endofserv2(self):
+	def _endofserv2(self):
 		customer = self._queue2.pop()
 		customer.tendofserv2 = self._tnow
 		if customer.color == self._color:
-			self.samplecustomer(customer)
+			self._samplecustomer(customer)
 
 		if len(self._queue2) == 0:
-			self.sampleserver()
+			self._sampleserver()
 		else:
-			self.addevent('endofserv2')
-			self.samplequeue2()
+			self._addevent('endofserv2')
+			self._samplequeue2()
 
 queue = Queue(0.4)
 for i in range(20):
