@@ -27,12 +27,10 @@ class SampleFunction:
 	def append(self, time, value):
 		if self._tstart is None:
 			self._tstart = time
-			self._tlast = time
-			self._value = value
 		else:
 			self._area += self._value * (time - self._tlast)
-			self._tlast = time
-			self._value = value
+		self._tlast = time
+		self._value = value
 
 	def average(self):
 		return self._area / (self._tlast - self._tstart)
@@ -69,17 +67,30 @@ class Queue:
 
 	def _sampleall(self):
 		ns = self._service is not None
-		self._samplefs['ns'].append(self._tnow, ns)
+		ns1 = ns and self._service.queue == 'queue1'
+		ns2 = ns and self._service.queue == 'queue2'
 		nq1 = len(self._queue1)
-		self._samplefs['nq1'].append(self._tnow, nq1)
 		nq2 = len(self._queue2)
-		self._samplefs['nq2'].append(self._tnow, nq2)
+		n1 = nq1 + ns1
+		n2 = nq2 + ns2
+
+		self._samplefs['Nq1'].append(self._tnow, nq1)
+		self._samplefs['Nq2'].append(self._tnow, nq2)
+		self._samplefs['N1'].append(self._tnow, n1)
+		self._samplefs['N2'].append(self._tnow, n2)
 
 	def _samplecustomer(self, customer):
-		t1 = customer.tendofserv1 - customer.tarrival
-		self._samples['t1'].append(t1)
-		t2 = customer.tendofserv2 - customer.tendofserv1
-		self._samples['t2'].append(t2)
+		w1 = customer.tstartofserv1 - customer.tarrival
+		w2 = customer.tstartofserv2 - customer.tendofserv1
+		x1 = customer.tendofserv1 - customer.tstartofserv1
+		x2 = customer.tendofserv2 - customer.tstartofserv2
+		t1 = w1 + x1
+		t2 = w2 + x2
+
+		self._samples['W1'].append(w1)
+		self._samples['W2'].append(w2)
+		self._samples['T1'].append(t1)
+		self._samples['T2'].append(t2)
 
 	def _addevent(self, kind):
 		if kind == 'arrival':
@@ -133,22 +144,26 @@ class Queue:
 				self._endofserv2()
 
 		self._sampleall()
+		# return dict(self._samples), dict(self._samplefs)
 		return self._statistics()
 
 	def _updateservice(self):
 		if self._service is None:
 			if len(self._queue1) > 0:
 				customer = self._queue1.pop()
+				customer.tstartofserv1 = self._tnow
 				self._service = Service(customer, 'queue1')
 				self._addevent('endofserv1')
 			elif len(self._queue2) > 0:
 				customer = self._queue2.pop()
+				customer.tstartofserv2 = self._tnow
 				self._service = Service(customer, 'queue2')
 				self._addevent('endofserv2')
 		elif self._service.queue is 'queue2':
 			if len(self._queue1) > 0:
 				self._queue2.append(self._service.customer)
 				customer = self._queue1.pop()
+				customer.tstartofserv1 = self._tnow
 				self._service = Service(customer, 'queue1')
 				self._rmevent('endofserv2')
 				self._addevent('endofserv1')
