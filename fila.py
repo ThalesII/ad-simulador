@@ -17,7 +17,7 @@ class Sample:
 
 	def variance(self):
 		## Conferir fórmula
-		return (self._sum**2 - self._sumsqr) / (self._num - 1)
+		return (self._sumsqr - self.average()**2) / (self._num - 1)
 
 class SampleFunction:
 	def __init__(self):
