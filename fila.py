@@ -38,17 +38,19 @@ class SampleFunction:
 		return self._area / (self._tlast - self._tstart)
 
 class Customer:
-	def __init__(self, tarrival, color):
-		self.tarrival = tarrival
+	def __init__(self, color):
 		self.color = color
 
 Event = namedtuple('Event', 'time, kind')
+
+Service = namedtuple('Service', 'customer, queue')
 
 class Queue:
 	def __init__(self, lambd):
 		self._tnow = 0
 		self._color = 0
 		self._lambd = lambd
+		self._service = None
 		self._queue1 = deque()
 		self._queue2 = deque()
 		self._events = []
@@ -61,33 +63,17 @@ class Queue:
 			self._events[i] = Event(time - self._tnow, kind)
 		self._tnow = 0
 
-	def _newcolor(self):
-		self._color += 1
-
 	def _clearsamples(self):
 		self._samples = defaultdict(Sample)
 		self._samplefs = defaultdict(SampleFunction)
 
-	def _sampleserver(self):
-		ns = len(self._queue1) > 0 or len(self._queue2) > 0
-		self._samplefs['ns'].append(self._tnow, ns)
-
-	def _samplequeue1(self):
-		n1 = len(self._queue1)
-		self._samplefs['nq1'].append(self._tnow, max(0, n1-1))
-
-	def _samplequeue2(self):
-		n2 = len(self._queue2)
-		if len(self._queue1) > 0:
-			nq2 = n2
-		else:
-			nq2 = max(0, n2-1)
-		self._samplefs['nq2'].append(self._tnow, nq2)
-
 	def _sampleall(self):
-		self._sampleserver()
-		self._samplequeue1()
-		self._samplequeue2()
+		ns = self._service is not None
+		self._samplefs['ns'].append(self._tnow, ns)
+		nq1 = len(self._queue1)
+		self._samplefs['nq1'].append(self._tnow, nq1)
+		nq2 = len(self._queue2)
+		self._samplefs['nq2'].append(self._tnow, nq2)
 
 	def _samplecustomer(self, customer):
 		t1 = customer.tendofserv1 - customer.tarrival
@@ -130,7 +116,7 @@ class Queue:
 
 	def simround(self, n):
 		self._resettime()
-		self._newcolor()
+		self._color += 1
 		self._clearsamples()
 		self._sampleall()
 
@@ -142,48 +128,55 @@ class Queue:
 			if kind == 'endofserv1':
 				self._endofserv1()
 			if kind == 'endofserv2':
-				if self._queue2[-1].color == self._color:
+				if self._service.customer.color == self._color:
 					n -= 1
 				self._endofserv2()
 
 		self._sampleall()
 		return self._statistics()
 
-	def _arrival(self):
-		customer = Customer(self._tnow, self._color)
-		self._queue1.appendleft(customer)
-		self._addevent('arrival')
-		if len(self._queue1) == 1:
-			self._addevent('endofserv1')
-			self._sampleserver()
-			if len(self._queue2) > 0:
+	def _updateservice(self):
+		if self._service is None:
+			if len(self._queue1) > 0:
+				customer = self._queue1.pop()
+				self._service = Service(customer, 'queue1')
+				self._addevent('endofserv1')
+			elif len(self._queue2) > 0:
+				customer = self._queue2.pop()
+				self._service = Service(customer, 'queue2')
+				self._addevent('endofserv2')
+		elif self._service.queue is 'queue2':
+			if len(self._queue1) > 0:
+				self._queue2.append(self._service.customer)
+				customer = self._queue1.pop()
+				self._service = Service(customer, 'queue1')
 				self._rmevent('endofserv2')
-				self._samplequeue2()
-		else:
-			self._samplequeue1()
+				self._addevent('endofserv1')
 
+	def _arrival(self):
+		self._addevent('arrival')
+		customer = Customer(self._color)
+		customer.tarrival = self._tnow
+		self._queue1.appendleft(customer)
+		self._updateservice()
+		self._sampleall()
+			
 	def _endofserv1(self):
-		customer = self._queue1.pop()
+		customer = self._service.customer
 		customer.tendofserv1 = self._tnow
+		self._service = None
 		self._queue2.appendleft(customer)
-		if len(self._queue1) == 0:
-			self._addevent('endofserv2')
-			self._samplequeue2()
-		else:
-			self._addevent('endofserv1')
-			self._samplequeue1()
+		self._updateservice()
+		self._sampleall()
 
 	def _endofserv2(self):
-		customer = self._queue2.pop()
+		customer = self._service.customer
 		customer.tendofserv2 = self._tnow
+		self._service = None
+		self._updateservice()
+		self._sampleall()
 		if customer.color == self._color:
 			self._samplecustomer(customer)
-
-		if len(self._queue2) == 0:
-			self._sampleserver()
-		else:
-			self._addevent('endofserv2')
-			self._samplequeue2()
 
 queue = Queue(0.4)
 for i in range(20):
