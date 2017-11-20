@@ -3,41 +3,55 @@ import random
 
 class Sample:
 	def __init__(self):
-		self._num = 0
-		self._sum = 0
-		self._sumsqr = 0
+		self._values = []
 
 	def append(self, value):
-		self._num += 1
-		self._sum += value
-		self._sumsqr += value**2
+		self._values.append(value)
 
 	def average(self):
-		return self._sum / self._num
+		return sum(self._values) / len(self._values)
 
 	def variance(self):
-		## Conferir fórmula
-		return (self._sumsqr - self.average()**2) / (self._num - 1)
+		avg = self.average()
+		tmp = 0
+		for value in self._values:
+			tmp += (value - avg)**2
+		return tmp / (len(self._values) - 1)
 
 class SampleFunction:
 	def __init__(self):
-		self._tstart = None
-		self._area = 0
+		self._times = []
+		self._values = []
 
 	def append(self, time, value):
-		if self._tstart is None:
-			self._tstart = time
-		else:
-			self._area += self._value * (time - self._tlast)
-		self._tlast = time
-		self._value = value
+		self._times.append(time)
+		self._values.append(value)
 
 	def average(self):
-		return self._area / (self._tlast - self._tstart)
+		area = 0
+		for i in range(len(self._values) - 1):
+			area += self._values[i] * (self._times[i+1] - self._times[i])
+		return area / (self._times[-1] - self._times[0])
 
 class Customer:
 	def __init__(self, color):
 		self.color = color
+		self._start = defaultdict(list)
+		self._endof = defaultdict(list)
+
+	def start(self, name, time):
+		self._start[name].append(time)
+
+	def endof(self, name, time):
+		self._endof[name].append(time)
+
+	def totaltime(self, name):
+		if len(self._start[name]) != len(self._endof[name]):
+			raise ValueError('customer.totaltime(name): mismatched times')
+		total = 0
+		for tstart, tend in zip(self._start[name], self._endof[name]):
+			total += tend - tstart
+		return total
 
 Event = namedtuple('Event', 'time, kind')
 
@@ -80,10 +94,10 @@ class Queue:
 		self._samplefs['N2'].append(self._tnow, n2)
 
 	def _samplecustomer(self, customer):
-		w1 = customer.tstartofserv1 - customer.tarrival
-		w2 = customer.tstartofserv2 - customer.tendofserv1
-		x1 = customer.tendofserv1 - customer.tstartofserv1
-		x2 = customer.tendofserv2 - customer.tstartofserv2
+		w1 = customer.totaltime('W1')
+		w2 = customer.totaltime('W2')
+		x1 = customer.totaltime('X1')
+		x2 = customer.totaltime('X2')
 		t1 = w1 + x1
 		t2 = w2 + x2
 
@@ -113,18 +127,6 @@ class Queue:
 		self._events.remove(event)
 		return event
 
-	def _statistics(self):
-		stats = {}
-		for key, sample in self._samples.items():
-			ekey = 'E[' + key + ']'
-			stats[ekey] = sample.average()
-			vkey = 'V(' + key + ')'
-			stats[vkey] = sample.variance()
-		for key, samplef in self._samplefs.items():
-			ekey = 'E[' + key + ']'
-			stats[ekey] = samplef.average()
-		return stats
-
 	def simround(self, n):
 		self._resettime()
 		self._color += 1
@@ -143,27 +145,31 @@ class Queue:
 					n -= 1
 				self._endofserv2()
 
-		self._sampleall()
-		# return dict(self._samples), dict(self._samplefs)
-		return self._statistics()
+		return dict(self._samples), dict(self._samplefs)
 
 	def _updateservice(self):
 		if self._service is None:
 			if len(self._queue1) > 0:
 				customer = self._queue1.pop()
-				customer.tstartofserv1 = self._tnow
+				customer.endof('W1', self._tnow)
+				customer.start('X1', self._tnow)
 				self._service = Service(customer, 'queue1')
 				self._addevent('endofserv1')
 			elif len(self._queue2) > 0:
 				customer = self._queue2.pop()
-				customer.tstartofserv2 = self._tnow
+				customer.endof('W2', self._tnow)
+				customer.start('X2', self._tnow)
 				self._service = Service(customer, 'queue2')
 				self._addevent('endofserv2')
 		elif self._service.queue is 'queue2':
 			if len(self._queue1) > 0:
-				self._queue2.append(self._service.customer)
+				customer = self._service.customer
+				customer.endof('X2', self._tnow)
+				customer.start('W2', self._tnow)
+				self._queue2.append(customer)
 				customer = self._queue1.pop()
-				customer.tstartofserv1 = self._tnow
+				customer.endof('W1', self._tnow)
+				customer.start('X1', self._tnow)
 				self._service = Service(customer, 'queue1')
 				self._rmevent('endofserv2')
 				self._addevent('endofserv1')
@@ -171,14 +177,15 @@ class Queue:
 	def _arrival(self):
 		self._addevent('arrival')
 		customer = Customer(self._color)
-		customer.tarrival = self._tnow
+		customer.start('W1', self._tnow)
 		self._queue1.appendleft(customer)
 		self._updateservice()
 		self._sampleall()
 			
 	def _endofserv1(self):
 		customer = self._service.customer
-		customer.tendofserv1 = self._tnow
+		customer.endof('X1', self._tnow)
+		customer.start('W2', self._tnow)
 		self._service = None
 		self._queue2.appendleft(customer)
 		self._updateservice()
@@ -186,17 +193,27 @@ class Queue:
 
 	def _endofserv2(self):
 		customer = self._service.customer
-		customer.tendofserv2 = self._tnow
+		customer.endof('X2', self._tnow)
 		self._service = None
 		self._updateservice()
 		self._sampleall()
 		if customer.color == self._color:
 			self._samplecustomer(customer)
 
+stats = defaultdict(Sample)
 queue = Queue(0.4)
-for i in range(20):
-	stats = queue.simround(50000)
-	print('round {}'.format(i+1))
-	for key, value in stats.items():
-		print('  {} = {:2.3f}'.format(key, value), end=',')
-	print()
+queue.simround(5e4)
+for i in range(10):
+	print('round {}'.format(i+1), end='\r')
+	smps, smpfs = queue.simround(1e4)
+
+	for name, sample in smps.items() | smpfs.items():
+		name = 'E[' + name + ']'
+		stats[name].append(sample.average())
+	for name, sample in smps.items():
+		name = 'V(' + name + ')'
+		stats[name].append(sample.variance())
+
+for name, stat in sorted(stats.items()):
+	print('{:>6} ={:8.3f}, Var = {:.2e}'.format(
+		name, stat.average(), stat.variance()))
