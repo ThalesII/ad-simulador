@@ -1,5 +1,7 @@
 from collections import defaultdict, deque, namedtuple
 import random
+import math
+import scipy.stats
 
 class Sample:
 	def __init__(self):
@@ -8,15 +10,20 @@ class Sample:
 	def append(self, value):
 		self._values.append(value)
 
-	def average(self):
+	def mean(self):
 		return sum(self._values) / len(self._values)
 
-	def variance(self):
-		avg = self.average()
-		tmp = 0
+	def var(self):
+		mean = self.mean()
+		temp = 0
 		for value in self._values:
-			tmp += (value - avg)**2
-		return tmp / (len(self._values) - 1)
+			temp += (value - mean)**2
+		return temp / (len(self._values) - 1)
+
+	def margin(self, conf):
+		n = len(self._values)
+		z = scipy.stats.t(n-1).ppf(1 - (1-conf)/2)
+		return z * math.sqrt(self.var() / n)
 
 class SampleFunction:
 	def __init__(self):
@@ -27,7 +34,7 @@ class SampleFunction:
 		self._times.append(time)
 		self._values.append(value)
 
-	def average(self):
+	def mean(self):
 		area = 0
 		for i in range(len(self._values) - 1):
 			area += self._values[i] * (self._times[i+1] - self._times[i])
@@ -209,11 +216,13 @@ for i in range(10):
 
 	for name, sample in smps.items() | smpfs.items():
 		name = 'E[' + name + ']'
-		stats[name].append(sample.average())
+		stats[name].append(sample.mean())
 	for name, sample in smps.items():
 		name = 'V(' + name + ')'
-		stats[name].append(sample.variance())
+		stats[name].append(sample.var())
 
 for name, stat in sorted(stats.items()):
-	print('{:>6} ={:8.3f}, Var = {:.2e}'.format(
-		name, stat.average(), stat.variance()))
+	mean = stat.mean()
+	rmargin = stat.margin(0.95) / mean
+	print('{:>6} ={:8.3f} +-{:5.2f}%'.format(
+		name, mean, 100 * rmargin))
