@@ -24,11 +24,24 @@ class Sample:
 			temp += (value - mean)**2
 		return temp / (len(self._values) - 1)
 
-	def margin(self, conf):
-		"""Calcula a margem de erro para a esperança dada certa confiança"""
+	def mean_interval(self, alpha):
+		"""Calcula o intervalo de confiança para a esperança dado alpha"""
 		n = len(self._values)
-		z = scipy.stats.t(n-1).ppf(1 - (1-conf)/2)
-		return z * math.sqrt(self.var() / n)
+		mean = self.mean()
+		var = self.var()
+		ts = scipy.stats.t(n-1)
+		low = mean + ts.ppf(alpha/2) * math.sqrt(var / n)
+		high = mean + ts.ppf(1 - alpha/2) * math.sqrt(var / n)
+		return low, high
+
+	def var_interval(self, alpha):
+		"""Calcula o intervalo de confiança para a variânica dado alpha"""
+		n = len(self._values)
+		var = self.var()
+		x2 = scipy.stats.chi2(n-1)
+		low = (n-1) * var / x2.ppf(1 - alpha/2)
+		high = (n-1) * var / x2.ppf(alpha/2)
+		return low, high
 
 class SampleFunction:
 	"""Coleta amostra de um processo estocástico e calcula estatísticas"""
@@ -229,7 +242,7 @@ class Queue:
 
 stats = defaultdict(Sample) # Dicionário contendo estatísticas
 queue = Queue(0.4)          # Sistema de filas
-queue.simround(5e4)         # Simula fase transiente
+queue.simround(1e4)         # Simula fase transiente
 for i in range(10):
 	print('round {}'.format(i+1), end='\r')
 	smps, smpfs = queue.simround(1e4) # Simula rodada coletando estatísticas
@@ -244,6 +257,7 @@ for i in range(10):
 # Imprime a média das estatísticas coletadas e seus intervalos de confiança
 for name, stat in sorted(stats.items()):
 	mean = stat.mean()
-	rmargin = stat.margin(0.95) / mean
+	low, high = stat.mean_interval(0.05)
+	percent = 50 * (high - low) / mean
 	print('{:>6} ={:8.3f} +-{:5.2f}%'.format(
-		name, mean, 100 * rmargin))
+		name, mean, percent))
