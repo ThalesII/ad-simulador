@@ -52,6 +52,8 @@ class Customer:
 	"""Armazena informações e coleta dados sobre um freguês"""
 	def __init__(self, color):
 		self.color = color
+		self.x1 = random.expovariate(1)
+		self.x2 = random.expovariate(1)
 		self._start = defaultdict(list)
 		self._endof = defaultdict(list)
 
@@ -90,7 +92,7 @@ class Queue:
 		self._events = []
 
 		# Prepara o simulador para execução com o primeiro evento de chegada
-		self._addevent('arrival')
+		self._addevent('arrival', random.expovariate(self._lambd))
 
 	def _clearsamples(self):
 		"""Inicializa todas as amostras para coleta de nova rodada"""
@@ -126,13 +128,9 @@ class Queue:
 		self._samples['T1'].append(t1)
 		self._samples['T2'].append(t2)
 
-	def _addevent(self, kind):
+	def _addevent(self, kind, dtime):
 		"""Cria um novo evento e insere na lista"""
-		if kind == 'arrival':
-			time = self._tnow + random.expovariate(self._lambd)
-		if kind == 'endofserv1' or kind == 'endofserv2':
-			time = self._tnow + random.expovariate(1)
-		event = Event(time, kind)
+		event = Event(self._tnow + dtime, kind)
 		self._events.append(event)
 
 	def _rmevent(self, kind):
@@ -178,29 +176,30 @@ class Queue:
 				customer.endof('W1', self._tnow)
 				customer.start('X1', self._tnow)
 				self._service = Service(customer, 'queue1')
-				self._addevent('endofserv1')
+				self._addevent('endofserv1', customer.x1)
 			elif len(self._queue2) > 0:
 				customer = self._queue2.pop()
+				self._service = Service(customer, 'queue2')
+				self._addevent('endofserv2', customer.x2 - customer.totaltime('X2'))
 				customer.endof('W2', self._tnow)
 				customer.start('X2', self._tnow)
-				self._service = Service(customer, 'queue2')
-				self._addevent('endofserv2')
 		elif self._service.queue is 'queue2':
 			if len(self._queue1) > 0:
 				customer = self._service.customer
+				self._queue2.append(customer)
 				customer.endof('X2', self._tnow)
 				customer.start('W2', self._tnow)
-				self._queue2.append(customer)
+
 				customer = self._queue1.pop()
-				customer.endof('W1', self._tnow)
-				customer.start('X1', self._tnow)
 				self._service = Service(customer, 'queue1')
 				self._rmevent('endofserv2')
-				self._addevent('endofserv1')
+				self._addevent('endofserv1', customer.x1)
+				customer.endof('W1', self._tnow)
+				customer.start('X1', self._tnow)
 
 	def _arrival(self):
 		"""Trata evento de chegada de freguês"""
-		self._addevent('arrival')
+		self._addevent('arrival', random.expovariate(self._lambd))
 		customer = Customer(self._color)
 		customer.start('W1', self._tnow)
 		self._queue1.appendleft(customer)
