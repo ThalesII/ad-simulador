@@ -1,19 +1,23 @@
-from collections import defaultdict, deque, namedtuple
+from collections import *
 import random
 import math
 import scipy.stats
 
 class Sample:
+	"""Coleta amostra de uma v.a. e calcula estatísticas"""
 	def __init__(self):
 		self._values = []
 
 	def append(self, value):
+		"""Adiciona um valor à amostra"""
 		self._values.append(value)
 
 	def mean(self):
+		"""Calcula a média amostral (estimador para a esperança)"""
 		return sum(self._values) / len(self._values)
 
 	def var(self):
+		"""Calcula a variância amostral (estimador para a variância)"""
 		mean = self.mean()
 		temp = 0
 		for value in self._values:
@@ -21,38 +25,46 @@ class Sample:
 		return temp / (len(self._values) - 1)
 
 	def margin(self, conf):
+		"""Calcula a margem de erro para a esperança dada certa confiança"""
 		n = len(self._values)
 		z = scipy.stats.t(n-1).ppf(1 - (1-conf)/2)
 		return z * math.sqrt(self.var() / n)
 
 class SampleFunction:
+	"""Coleta amostra de um processo estocástico e calcula estatísticas"""
 	def __init__(self):
 		self._times = []
 		self._values = []
 
 	def append(self, time, value):
+		"""Adiciona um valor à amostra"""
 		self._times.append(time)
 		self._values.append(value)
 
 	def mean(self):
+		"""Calcula a média amostral (estimador para a esperança)"""
 		area = 0
 		for i in range(len(self._values) - 1):
 			area += self._values[i] * (self._times[i+1] - self._times[i])
 		return area / (self._times[-1] - self._times[0])
 
 class Customer:
+	"""Armazena informações e coleta dados sobre um freguês"""
 	def __init__(self, color):
 		self.color = color
 		self._start = defaultdict(list)
 		self._endof = defaultdict(list)
 
 	def start(self, name, time):
+		"""Marca tempo de início de uma etapa"""
 		self._start[name].append(time)
 
 	def endof(self, name, time):
+		"""Marca tempo de término de uma etapa"""
 		self._endof[name].append(time)
 
 	def totaltime(self, name):
+		"""Calcula tempo total que o freguês passou em uma etapa"""
 		if len(self._start[name]) != len(self._endof[name]):
 			raise ValueError('customer.totaltime(name): mismatched times')
 		total = 0
@@ -60,11 +72,14 @@ class Customer:
 			total += tend - tstart
 		return total
 
+# Representa um evento do simulador, armazena tempo e tipo do evento
 Event = namedtuple('Event', 'time, kind')
 
+# Representa um serviço em execução, armazena freguês e fila de origem
 Service = namedtuple('Service', 'customer, queue')
 
 class Queue:
+	"""Realiza a simulação do sistema de filas e coleta estatísticas"""
 	def __init__(self, lambd):
 		self._tnow = 0
 		self._color = 0
@@ -74,19 +89,16 @@ class Queue:
 		self._queue2 = deque()
 		self._events = []
 
+		# Prepara o simulador para execução com o primeiro evento de chegada
 		self._addevent('arrival')
 
-	def _resettime(self):
-		for i, event in enumerate(self._events):
-			time, kind = event
-			self._events[i] = Event(time - self._tnow, kind)
-		self._tnow = 0
-
 	def _clearsamples(self):
+		"""Inicializa todas as amostras para coleta de nova rodada"""
 		self._samples = defaultdict(Sample)
 		self._samplefs = defaultdict(SampleFunction)
 
 	def _sampleall(self):
+		"""Coleta valores relativos ao estado atual do sistema de filas"""
 		ns = self._service is not None
 		ns1 = ns and self._service.queue == 'queue1'
 		ns2 = ns and self._service.queue == 'queue2'
@@ -101,6 +113,7 @@ class Queue:
 		self._samplefs['N2'].append(self._tnow, n2)
 
 	def _samplecustomer(self, customer):
+		"""Coleta valores relativos ao freguês saindo do sistema"""
 		w1 = customer.totaltime('W1')
 		w2 = customer.totaltime('W2')
 		x1 = customer.totaltime('X1')
@@ -114,6 +127,7 @@ class Queue:
 		self._samples['T2'].append(t2)
 
 	def _addevent(self, kind):
+		"""Cria um novo evento e insere na lista"""
 		if kind == 'arrival':
 			time = self._tnow + random.expovariate(self._lambd)
 		if kind == 'endofserv1' or kind == 'endofserv2':
@@ -122,6 +136,7 @@ class Queue:
 		self._events.append(event)
 
 	def _rmevent(self, kind):
+		"""Remove um evento da lista"""
 		for event in self._events:
 			if event.kind == kind:
 				self._events.remove(event)
@@ -130,12 +145,13 @@ class Queue:
 			raise ValueError('queue._rmevent(kind): kind not in events')
 
 	def _nextevent(self):
+		"""Retorna o próximo evento em ordem cronológica"""
 		event = min(self._events)
 		self._events.remove(event)
 		return event
 
 	def simround(self, n):
-		self._resettime()
+		"""Simula uma rodada do simulador e coleta `n` fregueses no total"""
 		self._color += 1
 		self._clearsamples()
 		self._sampleall()
@@ -155,6 +171,7 @@ class Queue:
 		return dict(self._samples), dict(self._samplefs)
 
 	def _updateservice(self):
+		"""Seleciona próximo serviço com base no estado atual do sistema"""
 		if self._service is None:
 			if len(self._queue1) > 0:
 				customer = self._queue1.pop()
@@ -182,6 +199,7 @@ class Queue:
 				self._addevent('endofserv1')
 
 	def _arrival(self):
+		"""Trata evento de chegada de freguês"""
 		self._addevent('arrival')
 		customer = Customer(self._color)
 		customer.start('W1', self._tnow)
@@ -190,6 +208,7 @@ class Queue:
 		self._sampleall()
 			
 	def _endofserv1(self):
+		"""Trata evento de fim de serviço para um freguês da fila 1"""
 		customer = self._service.customer
 		customer.endof('X1', self._tnow)
 		customer.start('W2', self._tnow)
@@ -199,20 +218,22 @@ class Queue:
 		self._sampleall()
 
 	def _endofserv2(self):
+		"""Trata evento de fim de serviço para um freguês da fila 2"""
 		customer = self._service.customer
 		customer.endof('X2', self._tnow)
 		self._service = None
 		self._updateservice()
 		self._sampleall()
+		# Apenas coleta estatísticas de fregueses que chegaram essa rodada
 		if customer.color == self._color:
 			self._samplecustomer(customer)
 
-stats = defaultdict(Sample)
-queue = Queue(0.4)
-queue.simround(5e4)
+stats = defaultdict(Sample) # Dicionário contendo estatísticas
+queue = Queue(0.4)          # Sistema de filas
+queue.simround(5e4)         # Simula fase transiente
 for i in range(10):
 	print('round {}'.format(i+1), end='\r')
-	smps, smpfs = queue.simround(1e4)
+	smps, smpfs = queue.simround(1e4) # Simula rodada coletando estatísticas
 
 	for name, sample in smps.items() | smpfs.items():
 		name = 'E[' + name + ']'
@@ -221,6 +242,7 @@ for i in range(10):
 		name = 'V(' + name + ')'
 		stats[name].append(sample.var())
 
+# Imprime a média das estatísticas coletadas e seus intervalos de confiança
 for name, stat in sorted(stats.items()):
 	mean = stat.mean()
 	rmargin = stat.margin(0.95) / mean
