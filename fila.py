@@ -240,24 +240,3 @@ class Queue:
 		if customer.color == self._color:
 			self._samplecustomer(customer)
 
-stats = defaultdict(Sample) # Dicionário contendo estatísticas
-queue = Queue(0.4)          # Sistema de filas
-queue.simround(1e4)         # Simula fase transiente
-for i in range(10):
-	print('round {}'.format(i+1), end='\r')
-	smps, smpfs = queue.simround(1e4) # Simula rodada coletando estatísticas
-
-	for name, sample in smps.items() | smpfs.items():
-		name = 'E[' + name + ']'
-		stats[name].append(sample.mean())
-	for name, sample in smps.items():
-		name = 'V(' + name + ')'
-		stats[name].append(sample.var())
-
-# Imprime a média das estatísticas coletadas e seus intervalos de confiança
-for name, stat in sorted(stats.items()):
-	mean = stat.mean()
-	low, high = stat.mean_interval(0.05)
-	percent = 50 * (high - low) / mean
-	print('{:>6} ={:8.3f} +-{:5.2f}%'.format(
-		name, mean, percent))
